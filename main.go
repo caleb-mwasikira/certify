@@ -6,19 +6,18 @@ import (
 	"path/filepath"
 
 	"github.com/caleb-mwasikira/certify/encrypt"
-	"github.com/caleb-mwasikira/certify/utils"
-	"github.com/caleb-mwasikira/certify/utils/file_paths"
+	"github.com/caleb-mwasikira/certify/fpaths"
 
 	"github.com/charmbracelet/huh"
 )
 
 func enterKeyPassphrase() string {
+	fmt.Println("encrypted key detected")
+
 	var passphrase string
 	const MIN_PASSWORD_LENGTH int = 8
-
-	fmt.Println("encrypted key detected")
 	err := huh.NewInput().
-		Title("Enter password: ").
+		Title("enter password: ").
 		EchoMode(huh.EchoModePassword).
 		Value(&passphrase).
 		Validate(func(s string) error {
@@ -30,21 +29,20 @@ func enterKeyPassphrase() string {
 		}).
 		Run()
 	if err != nil {
-		log.Fatalf("input err: %v\n", err)
+		log.Fatalf("[!] input err: %v", err)
 	}
 	return passphrase
 }
 
-func selectFileFromDir(prompt string, dirpath string) (string, error) {
-	var selectedFpath string
-	files, err := utils.ListFilesInDir(dirpath)
+func selectFileFromDir(prompt string, path string) (string, error) {
+	fmt.Println("[*] searching files in storage")
+	files, err := fpaths.ListFilesInDir(path)
 	if err != nil {
 		return "", err
 	}
 
 	if len(files) == 0 {
 		fmt.Println(prompt)
-		fmt.Println("searching files in storage")
 		return "", fmt.Errorf("no files found in storage directory")
 	}
 
@@ -53,6 +51,7 @@ func selectFileFromDir(prompt string, dirpath string) (string, error) {
 		options = append(options, huh.NewOption(file.Name(), file.Name()))
 	}
 
+	var selectedFpath string
 	err = huh.NewSelect[string]().
 		Title(prompt).
 		Options(options...).
@@ -65,17 +64,12 @@ func selectFileFromDir(prompt string, dirpath string) (string, error) {
 }
 
 func generateKeys() {
-	var (
-		privateKeyFname, publicKeyFname string
-		encryptPrivateKey               bool = false
-		encryptFn                       func() string
-	)
-
-	fmt.Println("generating key pair")
+	fmt.Println("[*] generating key pair")
 	privateKey, publicKey := encrypt.GenerateKeyPair()
-	fmt.Println("private and public keys generated")
-	fmt.Println("where do you want to save your files?")
+	fmt.Println("[.] private and public keys generated")
+	fmt.Println("[?] where do you want to save your files?")
 
+	var privateKeyFname string
 	err := huh.NewInput().
 		Title("private key: ").
 		Value(&privateKeyFname).
@@ -87,62 +81,61 @@ func generateKeys() {
 		}).
 		Run()
 	if err != nil {
-		log.Fatalf("input error: %v\n", err)
+		log.Fatalf("[!] input error: %v", err)
 	}
 
+	var publicKeyFname string
 	err = huh.NewInput().
 		Title("public key (optional): ").
 		Value(&publicKeyFname).
 		Run()
 	if err != nil {
-		log.Fatalf("input error: %v\n", err)
+		log.Fatalf("[!] input error: %v", err)
 	}
 
+	var encryptKey bool
 	err = huh.NewConfirm().
 		Title("encrypt private key? ").
 		Affirmative("Yes").
 		Negative("No").
-		Value(&encryptPrivateKey).
+		Value(&encryptKey).
 		Run()
 	if err != nil {
-		log.Fatalf("input error: %v\n", err)
+		log.Fatalf("[!] input error: %v", err)
 	}
 
-	if encryptPrivateKey {
+	var encryptFn func() string
+	if encryptKey {
 		encryptFn = enterKeyPassphrase
 	}
 	err = encrypt.SavePrivateKeyToFile(privateKey, privateKeyFname, encryptFn)
 	if err != nil {
-		log.Fatalf("error saving private key to file; %v\n", err)
+		log.Fatalf("[!] error saving private key: %v", err)
 	}
 	err = encrypt.SavePublicKeyToFile(publicKey, publicKeyFname)
 	if err != nil {
-		log.Fatalf("error saving public key to file; %v", err)
+		log.Fatalf("[!] error saving public key: %v", err)
 	}
 }
 
 func createNewCertificate() {
-	var (
-		certFpath, privateKeyFpath string
-		isCA                       bool
-	)
-
-	fmt.Println("creating new self-signed certificate")
-	fmt.Println("a self-signed certificate requires a private key to sign it")
+	fmt.Println("[*] creating new self-signed certificate")
+	fmt.Println("[.] a self-signed certificate requires a private key to sign it")
 	privateKeyFpath, err := selectFileFromDir(
-		"select key to sign certificate:",
-		file_paths.PrivateKeysDir,
+		"select private key to sign:",
+		fpaths.PrivateKeysDir,
 	)
 	if err != nil {
-		log.Fatalf("input error: %v", err)
+		log.Fatalf("[!] input error: %v", err)
 	}
 
 	// load private key
 	privateKey, err := encrypt.LoadPrivateKeyFromFile(privateKeyFpath, enterKeyPassphrase)
 	if err != nil {
-		log.Fatalf("error loading private key; %v", err)
+		log.Fatalf("[!] error loading private key: %v", err)
 	}
 
+	var isCA bool
 	err = huh.NewConfirm().
 		Title("does certificate belong to CA?").
 		Affirmative("Yes").
@@ -150,16 +143,17 @@ func createNewCertificate() {
 		Value(&isCA).
 		Run()
 	if err != nil {
-		log.Fatalf("input error: %v", err)
+		log.Fatalf("[!] input error: %v", err)
 	}
 
 	signedCert, err := newSelfSignedCert(*privateKey, isCA)
 	if err != nil {
-		log.Fatalf("error creating new self-signed certificate; %v", err)
+		log.Fatalf("[!] error creating new self-signed certificate: %v", err)
 	}
 
+	var certFpath string
 	if isCA {
-		certFpath = file_paths.CACertFile
+		certFpath = fpaths.CaCertFile
 	} else {
 		// enter cert filepath
 		err = huh.NewInput().
@@ -173,62 +167,74 @@ func createNewCertificate() {
 			}).
 			Run()
 		if err != nil {
-			log.Fatalf("input error: %v", err)
+			log.Fatalf("[!] input error: %v", err)
 		}
 	}
 
 	err = saveCertToFile(signedCert, certFpath)
 	if err != nil {
-		log.Fatalf("error saving certificate to file; %v", err)
+		log.Fatalf("[!] error saving certificate: %v", err)
 	}
+
+	var signWithCA bool
+	err = huh.NewConfirm().
+		Title("sign certificate with CA?").
+		Affirmative("Yes").
+		Negative("No").
+		Value(&signWithCA).
+		Run()
+	if err != nil {
+		log.Fatalf("[!] input error: %v", err)
+	}
+
+	if !signWithCA {
+		return
+	}
+
+	signClientCertificate()
 }
 
 func signClientCertificate() {
-	var (
-		clientCertFpath      string
-		clientPublicKeyFpath string
-	)
-
 	// load client certificate
 	clientCertFpath, err := selectFileFromDir(
 		"enter certificate file to be signed:",
-		file_paths.CertDir,
+		fpaths.CertDir,
 	)
 	if err != nil {
-		log.Fatalf("input error: %v", err)
+		log.Fatalf("[!] input error: %v", err)
 	}
 
 	clientCert, err := loadCertFromFile(clientCertFpath)
 	if err != nil {
-		log.Fatalf("error loading client cert from file; %v", err)
+		log.Fatalf("[!] error loading client cert: %v", err)
 	}
 
 	// load client's public key file
-	clientPublicKeyFpath, err = selectFileFromDir(
+	clientPublicKeyFpath, err := selectFileFromDir(
 		"enter client's public key filepath:",
-		file_paths.PublicKeysDir,
+		fpaths.PublicKeysDir,
 	)
 	if err != nil {
-		log.Fatalf("input error: %v", err)
+		log.Fatalf("[!] input error: %v", err)
 	}
 
 	clientPublicKey, err := encrypt.LoadPublicKeyFromFile(clientPublicKeyFpath)
 	if err != nil {
-		log.Fatalf("error loading client's public key; %v", err)
+		log.Fatalf("[!] error loading client's public key: %v", err)
 	}
 
 	// sign client cert
 	signedCert, err := signCertWithCA(clientCert, clientPublicKey)
 	if err != nil {
-		log.Fatalf("error signing cert with CA; %v", err)
+		log.Fatalf("[!] error signing cert with CA: %v", err)
 	}
 
 	// save signed cert as a file in signed cert dir
 	clientCertFname := filepath.Base(clientCertFpath)
-	clientCertFpath = filepath.Join(file_paths.SignedCertDir, clientCertFname)
+	clientCertFpath = filepath.Join(fpaths.SignedCertDir, clientCertFname)
 	err = saveCertToFile(signedCert, clientCertFpath)
 	if err != nil {
-		log.Fatalf("error saving cert to file; %v", err)
+		log.Fatalf("[!] error saving cert: %v", err)
 	}
 }
 
@@ -253,14 +259,15 @@ func main() {
 	err := huh.NewSelect[int]().
 		Title("What would you like to do?").
 		Options(
-			huh.NewOption("Generate Public and Private Keys", 0),
-			huh.NewOption("Create New Certificate", 1),
-			huh.NewOption("Sign existing certificate", 2),
+			huh.NewOption("generate key pair", 0),
+			huh.NewOption("new certificate", 1),
+			huh.NewOption("sign existing certificate", 2),
+			huh.NewOption("view storage", 3),
 		).
 		Value(&userAction).
 		Run()
 	if err != nil {
-		log.Fatalf("input error: %v\n", err)
+		log.Fatalf("[!] input error: %v", err)
 	}
 
 	switch userAction {
@@ -270,7 +277,10 @@ func main() {
 		createNewCertificate()
 	case 2:
 		signClientCertificate()
+	case 3:
+		fmt.Printf("[*] listing cert storage dir %v\n\n", fpaths.RootDir)
+		fpaths.PrintDirectory(fpaths.RootDir, 0)
 	default:
-		log.Fatal("unknown user action")
+		log.Fatal("[?] unknown user action")
 	}
 }

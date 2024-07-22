@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/caleb-mwasikira/certify/encrypt"
-	"github.com/caleb-mwasikira/certify/utils/file_paths"
+	"github.com/caleb-mwasikira/certify/fpaths"
 )
 
 var (
@@ -30,7 +30,7 @@ func defaultCertTemplate(isCA bool) x509.Certificate {
 	maxNumber := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, maxNumber)
 	if err != nil {
-		log.Fatalf("error generating certificate serial number; %v\n", err)
+		log.Fatalf("[!] error generating certificate serial number; %v\n", err)
 	}
 
 	defaultSubjectName := pkix.Name{
@@ -71,16 +71,18 @@ func signCertWithCA(clientCert *x509.Certificate, clientPublicKey *rsa.PublicKey
 		Type: "CERTIFICATE",
 	}
 
-	caCert, err := loadCertFromFile(file_paths.CACertFile)
-	if err != nil {
-		return signedCert, err
-	}
-	caPrivateKey, err := encrypt.LoadPrivateKeyFromFile(file_paths.CAPrivateKeyFile, enterKeyPassphrase)
+	caCert, err := loadCertFromFile(fpaths.CaCertFile)
 	if err != nil {
 		return signedCert, err
 	}
 
-	fmt.Println("signing certificate")
+	fmt.Println("[*] loading CA's private key for signing")
+	caPrivateKey, err := encrypt.LoadPrivateKeyFromFile(fpaths.CaPrivateKeyFile, enterKeyPassphrase)
+	if err != nil {
+		return signedCert, err
+	}
+
+	fmt.Println("[*] signing certificate")
 	certBytes, err := x509.CreateCertificate(
 		rand.Reader,
 		clientCert,
@@ -99,9 +101,9 @@ func signCertWithCA(clientCert *x509.Certificate, clientPublicKey *rsa.PublicKey
 func saveCertToFile(certPem pem.Block, fpath string) error {
 	// save cert as a PEM encoded file
 	if !filepath.IsAbs(fpath) {
-		fpath = filepath.Join(file_paths.CertDir, filepath.Base(fpath))
+		fpath = filepath.Join(fpaths.CertDir, filepath.Base(fpath))
 	}
-	fmt.Printf("saving certificate to file '%v'\n", fpath)
+	fmt.Printf("[*] saving certificate to file '%v'\n", fpath)
 
 	file, err := os.Create(fpath)
 	if err != nil {
@@ -115,9 +117,9 @@ func saveCertToFile(certPem pem.Block, fpath string) error {
 
 func loadCertFromFile(fpath string) (*x509.Certificate, error) {
 	if !filepath.IsAbs(fpath) {
-		fpath = filepath.Join(file_paths.CertDir, filepath.Base(fpath))
+		fpath = filepath.Join(fpaths.CertDir, filepath.Base(fpath))
 	}
-	fmt.Printf("loading certificate from file '%v'\n", fpath)
+	fmt.Printf("[*] loading certificate from file '%v'\n", fpath)
 
 	fileData, err := os.ReadFile(fpath)
 	if err != nil {

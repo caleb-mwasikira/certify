@@ -9,15 +9,15 @@ import (
 )
 
 type ErrMissingEncryptionKey struct {
-	message string
+	msg string
 }
 
-func (e *ErrMissingEncryptionKey) Error() string {
-	if len(e.message) == 0 {
-		e.message = "no passphrase provided for message encryption or decryption"
+func (err *ErrMissingEncryptionKey) Error() string {
+	if len(err.msg) != 0 {
+		return err.msg
 	}
 
-	return e.message
+	return "no passphrase provided for message encryption or decryption"
 }
 
 // padByteArray pads the input byte array to the specified length with the given pad byte.
@@ -26,19 +26,19 @@ func padByteArray(input []byte, length int) []byte {
 		return input[:length] // If the input is already long enough, truncate it.
 	}
 
-	padded_array := make([]byte, length)
-	copy(padded_array, input)
+	paddedArray := make([]byte, length)
+	copy(paddedArray, input)
 
 	// seed a random number generator with a constant value
 	// so we always get the same numbers on multiple runs of the program
-	random_num_generator := mrand.NewSource(42)
+	random := mrand.NewSource(42)
 
 	for i := len(input); i < length; i++ {
-		rand_num := random_num_generator.Int63()
-		padded_array[i] = byte(rand_num)
+		randomNumber := random.Int63()
+		paddedArray[i] = byte(randomNumber)
 	}
 
-	return padded_array
+	return paddedArray
 }
 
 func Encrypt(message, key []byte) ([]byte, error) {
